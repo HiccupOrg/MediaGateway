@@ -1,11 +1,12 @@
 import { types as mediasoupTypes } from "mediasoup";
-import * as ws from 'ws';
 import * as mediasoup from "mediasoup";
 import * as dotenv from 'dotenv';
-import * as process from "node:process";
 import * as ed25519 from '@noble/ed25519'
-import {isStringObject} from "node:util/types";
+import * as socketio from "socket.io";
+import express from 'express';
+import * as process from "node:process";
 import assert from "node:assert";
+import * as http from "node:http";
 
 
 interface Settings {
@@ -16,7 +17,6 @@ interface Settings {
     MediaPublicIPAddress?: string;
     SignalServerHost: string;
     SignalServerPort: number;
-    PublicKey: string;
 }
 
 
@@ -45,8 +45,6 @@ function getSettings(): Settings {
         debug: process.env.DEBUG?.toLowerCase() == "true",
     });
 
-    console.assert(process.env.PUBLIC_KEY, "Public Key must be set");
-
     return {
         MediaServerHost: process.env.MEDIA_SERVER_HOST || "127.0.0.1",
         MediaServerPort: parseInt(process.env.MEDIA_SERVER_PORT || "1441"),
@@ -55,7 +53,6 @@ function getSettings(): Settings {
         MediaPublicIPAddress: process.env.MEDIA_PUBLIC_IP_ADDRESS,
         SignalServerHost: process.env.SIGNAL_SERVER_HOST || "127.0.0.1",
         SignalServerPort: parseInt(process.env.SIGNAL_SERVER_PORT || "1441"),
-        PublicKey: process.env.PUBLIC_KEY!,
     };
 }
 
@@ -164,85 +161,27 @@ class MediaServer {
 
 class SignalServer {
     mediaServer: MediaServer;
-    websocketServer: ws.WebSocketServer;
+    expressInstance: express.Express;
+    httpServer: http.Server;
+    wsServer: socketio.Server;
 
     constructor() {
         this.mediaServer = new MediaServer();
-        this.websocketServer = new ws.WebSocketServer({
-            host: this.mediaServer.settings.SignalServerHost,
-            port: this.mediaServer.settings.SignalServerPort,
-        });
+        this.expressInstance = express();
+        this.httpServer = http.createServer(this.expressInstance);
+        this.wsServer = new socketio.Server(this.httpServer);
         this.initialize();
     }
 
     private initialize() {
-        this.websocketServer.on("connection", (ws) => {
-            let sessionState: SignalSessionState = {
-                sessionId: generateCustomRandomString(64),
-            };
-
-            const endSession = (reason: string) => {
-                if (ws.readyState !== ws.CLOSED) {
-                    ws.close(1008, JSON.stringify({ reason }));
-                }
-                this.mediaServer.cleanSession(sessionState.sessionId);
-            };
-
-            ws.on('error', (error) => {
-                endSession("Internal Server Error");
-                console.error(error);
-            });
-
-            ws.on('close', () => {
-                endSession("closed");
-            });
-
-            ws.on('message', async (message) => {
-                try {
-                    const msg: SignalPayload = JSON.parse(message.toString());
-
-                    if (msg.type === "authenticate") {
-                        if (await checkAuthToken(msg.data, this.mediaServer.settings.PublicKey)) {
-                            sessionState.routerId = msg.data.routerId;
-                            ws.send(JSON.stringify({ type: "authenticated" }));
-                            return;
-                        }
-                    }
-
-                    if (sessionState.routerId === undefined) {
-                        endSession("Unauthorized");
-                        return;
-                    }
-
-                    if (msg.type === "dummy") {
-                        ws.send(JSON.stringify(sessionState));
-                        return;
-                    } else if (msg.type === "join_info") {
-                        if (!this.mediaServer.isReady()) {
-                            ws.send(JSON.stringify({ type: "not_ready" }));
-                            return;
-                        }
-                        const transport = await this.mediaServer.getSessionTransport(sessionState.sessionId, sessionState.sessionId);
-                        ws.send(JSON.stringify({
-                            id: transport.id,
-                            iceParameters: transport.iceParameters,
-                            iceCandidates: transport.iceCandidates,
-                            dtlsParameters: transport.dtlsParameters
-                        }));
-                        return;
-                    }
-
-                    endSession("Bad Message");
-                } catch (e) {
-                    console.error(e);
-                    endSession("Uncaught Exception");
-                }
-            });
-
-            ws.send(JSON.stringify({
-                type: "authenticate_required",
-            }));
+        this.expressInstance.get('/', (req, res) => {
+            res.status(418).send("");
         });
+
+        this.wsServer.on('connection', (ws) => {
+        });
+
+        this.httpServer.listen(this.mediaServer.settings.SignalServerPort, () => {});
     }
 }
 
