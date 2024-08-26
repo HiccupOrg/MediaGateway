@@ -8,6 +8,7 @@ import * as apollo from '@apollo/client/core/core.cjs';
 import * as process from "node:process";
 import assert from "node:assert";
 import * as http from "node:http";
+import {SignatureHelper} from "./signature.js";
 import {ServiceRegistryInfoQuery} from "./registry.generated.js";
 
 const gql = apollo.gql;
@@ -173,6 +174,7 @@ class SignalServer {
     httpServer: http.Server;
     wsServer: socketio.Server;
     registryClient: apollo.ApolloClient<any>;
+    publicKey?: string;
 
     constructor() {
         this.mediaServer = new MediaServer();
@@ -195,10 +197,12 @@ class SignalServer {
                 }
             }
         `;
-        const result = await this.registryClient.query<ServiceRegistryInfoQuery>({
+        const serviceRegistryQueryResult = await this.registryClient.query<ServiceRegistryInfoQuery>({
             query: GET_PUBLIC_KEY,
         });
-        console.log(result);
+        this.publicKey = serviceRegistryQueryResult.data.serviceRegistryInfo.publicKey;
+        assert(this.publicKey);
+        SignatureHelper.publicKey = this.publicKey;
 
         this.expressInstance.get('/', (req, res) => {
             res.status(418).send("");
