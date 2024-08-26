@@ -233,16 +233,41 @@ class SignalServer {
             res.status(418).send("");
         });
 
+        // TODO
         this.expressInstance.post('/createOrUpdateRoomInfo', [
             validator.body("roomId").isString().isLength({min: 8}),
             validator.body("voiceMaxIncomingRate").isNumeric(),
             validator.body("voiceMaxOutgoingRate").isNumeric(),
-        ], (req: express.Request, res: express.Response) => {
-        });
+        ], (req: express.Request, res: express.Response) => {});
+
+        const errorHandler = (handler: Function) => {
+            const handleError = (err: Error) => {
+                console.error("please handle me", err);
+            };
+
+            return async (...args: any) => {
+                try {
+                    const ret = await handler.apply(this, args);
+                    if (ret && typeof ret.catch === "function") {
+                        // async handler
+                        ret.catch(handleError);
+                    }
+                } catch (e: any) {
+                    // sync handler
+                    handleError(e);
+                }
+            };
+        };
 
         this.wsServer.on('connection', (socket) => {
-            socket.on('request_to_jon', (msg) => {
+            socket.on('authorize', async (msg) => {
+                JSON.parse(msg);
             });
+
+            socket.on('request_to_join', errorHandler(async (msg: string) => {
+            }));
+
+            socket.emit('required_authorize');
         });
 
         this.httpServer.listen(this.mediaServer.settings.SignalServerPort, () => {});
