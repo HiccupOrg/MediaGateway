@@ -5,23 +5,35 @@
   "main": "src/index.ts",
   "type": "module",
   "scripts": {
-    "compile": "tsc",
-    "dev": "tsc-watch --onSuccess \"node ./dist/index.js\""
+    "gql": "graphql-codegen",
+    "gqlw": "graphql-codegen -w",
+    "tsw": "tsc-watch --onSuccess \"node ./dist/index.js\"",
+    "compile": "graphql-codegen && tsc",
+    "dev": "npm-run-all --parallel gqlw tsw"
   },
   "keywords": [],
   "author": "DarcJC",
   "license": "ISC",
   "dependencies": {
+    "@apollo/client": "^3.11.4",
     "@noble/ed25519": "^2.1.0",
     "dotenv": "^16.4.5",
     "express": "4",
+    "graphql-tag": "^2.12.6",
     "mediasoup": "^3.14.11",
     "socket.io": "^4.7.5"
   },
   "devDependencies": {
+    "@graphql-codegen/cli": "^5.0.2",
+    "@graphql-codegen/client-preset": "^4.3.3",
+    "@graphql-typed-document-node/core": "^3.2.0",
+    "@parcel/watcher": "^2.4.1",
     "@types/express": "4",
     "@types/node": "^22.5.0",
     "@types/ws": "^8.5.12",
+    "graphql": "^16.9.0",
+    "install": "^0.13.0",
+    "npm-run-all": "^4.1.5",
     "tsc-watch": "^6.2.0",
     "typescript": "^5.5.4"
   },

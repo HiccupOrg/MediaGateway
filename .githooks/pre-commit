@@ -1,0 +1,13 @@
+#!/bin/sh
+# pre-commit hook to run pnpm gql
+
+echo "Running 'pnpm gql' to generate GraphQL code..."
+pnpm gql
+
+# Check if pnpm gql succeeded
+if [ $? -ne 0 ]; then
+  echo "pnpm gql failed, aborting commit."
+  exit 1
+fi
+
+exit 0

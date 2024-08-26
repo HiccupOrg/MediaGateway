@@ -1,12 +1,16 @@
 import { types as mediasoupTypes } from "mediasoup";
 import * as mediasoup from "mediasoup";
 import * as dotenv from 'dotenv';
-import * as ed25519 from '@noble/ed25519'
+import * as ed25519 from '@noble/ed25519';
 import * as socketio from "socket.io";
 import express from 'express';
+import * as apollo from '@apollo/client/core/core.cjs';
 import * as process from "node:process";
 import assert from "node:assert";
 import * as http from "node:http";
+import {ServiceRegistryInfoQuery} from "./registry.generated.js";
+
+const gql = apollo.gql;
 
 
 interface Settings {
@@ -17,6 +21,7 @@ interface Settings {
     MediaPublicIPAddress?: string;
     SignalServerHost: string;
     SignalServerPort: number;
+    RegistryURL: string;
 }
 
 
@@ -45,6 +50,8 @@ function getSettings(): Settings {
         debug: process.env.DEBUG?.toLowerCase() == "true",
     });
 
+    assert(process.env.REGISTRY_URL !== undefined, "Registry URL must be set");
+
     return {
         MediaServerHost: process.env.MEDIA_SERVER_HOST || "127.0.0.1",
         MediaServerPort: parseInt(process.env.MEDIA_SERVER_PORT || "1441"),
@@ -53,6 +60,7 @@ function getSettings(): Settings {
         MediaPublicIPAddress: process.env.MEDIA_PUBLIC_IP_ADDRESS,
         SignalServerHost: process.env.SIGNAL_SERVER_HOST || "127.0.0.1",
         SignalServerPort: parseInt(process.env.SIGNAL_SERVER_PORT || "1441"),
+        RegistryURL: process.env.REGISTRY_URL,
     };
 }
 
@@ -164,16 +172,34 @@ class SignalServer {
     expressInstance: express.Express;
     httpServer: http.Server;
     wsServer: socketio.Server;
+    registryClient: apollo.ApolloClient<any>;
 
     constructor() {
         this.mediaServer = new MediaServer();
         this.expressInstance = express();
         this.httpServer = http.createServer(this.expressInstance);
         this.wsServer = new socketio.Server(this.httpServer);
-        this.initialize();
+        this.registryClient = new apollo.ApolloClient({
+            uri: this.mediaServer.settings.RegistryURL,
+            cache: new apollo.InMemoryCache(),
+        });
+        this.initialize().then(()=>{});
     }
 
-    private initialize() {
+    private async initialize() {
+        // Fetch public key from registry server
+        const GET_PUBLIC_KEY = gql`
+            query ServiceRegistryInfo {
+                serviceRegistryInfo {
+                    publicKey
+                }
+            }
+        `;
+        const result = await this.registryClient.query<ServiceRegistryInfoQuery>({
+            query: GET_PUBLIC_KEY,
+        });
+        console.log(result);
+
         this.expressInstance.get('/', (req, res) => {
             res.status(418).send("");
         });
