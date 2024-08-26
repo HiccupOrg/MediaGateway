@@ -8,6 +8,7 @@ import * as apollo from '@apollo/client/core/core.cjs';
 import * as process from "node:process";
 import assert from "node:assert";
 import * as http from "node:http";
+import * as validator from 'express-validator';
 import {SignatureHelper} from "./signature.js";
 import {RegisterServiceMutation, RegisterServiceMutationVariables} from "./registry.generated.js";
 
@@ -182,6 +183,7 @@ class SignalServer {
     constructor() {
         this.mediaServer = new MediaServer();
         this.expressInstance = express();
+        this.expressInstance.use(express.json());
         this.httpServer = http.createServer(this.expressInstance);
         this.wsServer = new socketio.Server(this.httpServer);
         this.registryClient = new apollo.ApolloClient({
@@ -231,7 +233,16 @@ class SignalServer {
             res.status(418).send("");
         });
 
-        this.wsServer.on('connection', (ws) => {
+        this.expressInstance.post('/createOrUpdateRoomInfo', [
+            validator.body("roomId").isString().isLength({min: 8}),
+            validator.body("voiceMaxIncomingRate").isNumeric(),
+            validator.body("voiceMaxOutgoingRate").isNumeric(),
+        ], (req: express.Request, res: express.Response) => {
+        });
+
+        this.wsServer.on('connection', (socket) => {
+            socket.on('request_to_jon', (msg) => {
+            });
         });
 
         this.httpServer.listen(this.mediaServer.settings.SignalServerPort, () => {});

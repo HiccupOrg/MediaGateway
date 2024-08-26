@@ -35,8 +35,17 @@ export type ClassicUser = UserBase & {
 
 export type ClassicUserAnonymousUser = AnonymousUser | ClassicUser;
 
+export type MediaSignalServerConnectionInfo = {
+  __typename?: 'MediaSignalServerConnectionInfo';
+  hostname: Scalars['String']['output'];
+  port: Scalars['Int']['output'];
+  token: Scalars['String']['output'];
+};
+
 export type Mutation = {
   __typename?: 'Mutation';
+  /** Allocate a media server and get connection info */
+  allocateMediaServer: MediaSignalServerConnectionInfo;
   /** Binding anonymous identify to a classic identify. Auto register public key if anonymous doesn't exist. */
   bindAnonymousIdentify: Scalars['Boolean']['output'];
   /** Create default administration */
