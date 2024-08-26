@@ -40,7 +40,7 @@ export class SignatureHelper {
         const sortedKeys = Array.from(messageBody.keys()).sort();
         const stringToVerify = sortedKeys.map(key => `${key}:${messageBody.get(key)}`).join(',');
 
-        const isValid = await ed25519.verifyAsync(signature, stringToVerify, this.publicKey);
+        const isValid = await ed25519.verifyAsync(signature, Buffer.from(stringToVerify), this.publicKey);
         if (!isValid) {
             return [false, "Invalid signature"];
         }

@@ -9,20 +9,23 @@ import * as process from "node:process";
 import assert from "node:assert";
 import * as http from "node:http";
 import {SignatureHelper} from "./signature.js";
-import {ServiceRegistryInfoQuery} from "./registry.generated.js";
+import {RegisterServiceMutation, RegisterServiceMutationVariables} from "./registry.generated.js";
 
 const gql = apollo.gql;
 
 
 interface Settings {
+    ServiceId: string;
     MediaServerHost: string;
     MediaServerPort: number;
     MediaEnableTCP: boolean;
     MediaEnableUDP: boolean;
-    MediaPublicIPAddress?: string;
+    PublicIPAddress: string;
+    PublicDomain?: string;
     SignalServerHost: string;
     SignalServerPort: number;
     RegistryURL: string;
+    ServiceToken: string;
 }
 
 
@@ -52,22 +55,21 @@ function getSettings(): Settings {
     });
 
     assert(process.env.REGISTRY_URL !== undefined, "Registry URL must be set");
+    assert(process.env.MEDIA_PUBLIC_IP_ADDRESS !== undefined, "Registry URL must be set");
 
     return {
+        ServiceId: process.env.SERVICE_ID || generateCustomRandomString(8),
         MediaServerHost: process.env.MEDIA_SERVER_HOST || "127.0.0.1",
         MediaServerPort: parseInt(process.env.MEDIA_SERVER_PORT || "1441"),
         MediaEnableTCP: process.env.MEDIA_ENABLE_TCP?.toLowerCase() == "true",
         MediaEnableUDP: process.env.MEDIA_ENABLE_UDP?.toLowerCase() == "true",
-        MediaPublicIPAddress: process.env.MEDIA_PUBLIC_IP_ADDRESS,
+        PublicIPAddress: process.env.MEDIA_PUBLIC_IP_ADDRESS!,
         SignalServerHost: process.env.SIGNAL_SERVER_HOST || "127.0.0.1",
         SignalServerPort: parseInt(process.env.SIGNAL_SERVER_PORT || "1441"),
         RegistryURL: process.env.REGISTRY_URL,
+        ServiceToken: process.env.SERVICE_TOKEN || "",
+        PublicDomain: process.env.PUBLIC_DOMAIN,
     };
-}
-
-
-async function checkAuthToken(token: AuthToken, publicKey: string): Promise<boolean> {
-    return await ed25519.verifyAsync(token.signature, Buffer.from(token.routerId), publicKey);
 }
 
 function generateCustomRandomString(length: number, chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789$*%&^()') {
@@ -105,7 +107,7 @@ class MediaServer {
                     protocol: "tcp",
                     ip: this.settings.MediaServerHost,
                     port: this.settings.MediaServerPort,
-                    announcedAddress: this.settings.MediaPublicIPAddress,
+                    announcedAddress: this.settings.PublicIPAddress,
                 });
             }
 
@@ -114,7 +116,7 @@ class MediaServer {
                     protocol: "udp",
                     ip: this.settings.MediaServerHost,
                     port: this.settings.MediaServerPort,
-                    announcedAddress: this.settings.MediaPublicIPAddress,
+                    announcedAddress: this.settings.PublicIPAddress,
                 });
             }
 
@@ -175,6 +177,7 @@ class SignalServer {
     wsServer: socketio.Server;
     registryClient: apollo.ApolloClient<any>;
     publicKey?: string;
+    _registerWorkerHandle?: NodeJS.Timeout;
 
     constructor() {
         this.mediaServer = new MediaServer();
@@ -184,25 +187,45 @@ class SignalServer {
         this.registryClient = new apollo.ApolloClient({
             uri: this.mediaServer.settings.RegistryURL,
             cache: new apollo.InMemoryCache(),
+            headers: {
+                'X-Hiccup-ServiceToken': this.mediaServer.settings.ServiceToken,
+            },
         });
-        this.initialize().then(()=>{});
+        this.initialize().then(()=>{ console.log("Startup finished"); });
     }
 
-    private async initialize() {
+    private async registerServiceWorker() {
         // Fetch public key from registry server
-        const GET_PUBLIC_KEY = gql`
-            query ServiceRegistryInfo {
-                serviceRegistryInfo {
+        const REGISTER_SERVICE = gql`
+            mutation RegisterService($category: String!, $serviceId: String!, $info: ServiceInfoInputType!) {
+                registerService(category: $category, serviceId: $serviceId, serviceInfo: $info) {
                     publicKey
                 }
             }
         `;
-        const serviceRegistryQueryResult = await this.registryClient.query<ServiceRegistryInfoQuery>({
-            query: GET_PUBLIC_KEY,
+        const serviceRegistryQueryResult = await this.registryClient.mutate<RegisterServiceMutation, RegisterServiceMutationVariables>({
+            mutation: REGISTER_SERVICE,
+            variables: {
+                category: "media",
+                serviceId: this.mediaServer.settings.ServiceId,
+                info: {
+                    ip: this.mediaServer.settings.PublicIPAddress,
+                    hostname: this.mediaServer.settings.PublicDomain || this.mediaServer.settings.PublicIPAddress,
+                    port: this.mediaServer.settings.SignalServerPort,
+                    loadFactor: 0.1,
+                    tags: ["china"],
+                }
+            },
         });
-        this.publicKey = serviceRegistryQueryResult.data.serviceRegistryInfo.publicKey;
+        this.publicKey = serviceRegistryQueryResult.data?.registerService?.publicKey;
         assert(this.publicKey);
         SignatureHelper.publicKey = this.publicKey;
+
+        return this.registerServiceWorker.bind(this);
+    }
+
+    private async initialize() {
+        this._registerWorkerHandle = setInterval(await this.registerServiceWorker(), 30000);
 
         this.expressInstance.get('/', (req, res) => {
             res.status(418).send("");
