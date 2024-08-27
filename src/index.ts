@@ -1,7 +1,6 @@
 import { types as mediasoupTypes } from "mediasoup";
 import * as mediasoup from "mediasoup";
 import * as dotenv from 'dotenv';
-import * as ed25519 from '@noble/ed25519';
 import * as socketio from "socket.io";
 import express from 'express';
 import * as apollo from '@apollo/client/core/core.cjs';
@@ -31,20 +30,7 @@ interface Settings {
 
 
 interface SignalSessionState {
-    sessionId: string;
-    routerId?: string;
-}
-
-
-interface SignalPayload {
-    type: "dummy" | "authenticate" | "join_info"
-    data: any
-}
-
-
-interface AuthToken {
-    routerId: string
-    signature: string
+    isAuthenticated: boolean;
 }
 
 
@@ -56,7 +42,7 @@ function getSettings(): Settings {
     });
 
     assert(process.env.REGISTRY_URL !== undefined, "Registry URL must be set");
-    assert(process.env.MEDIA_PUBLIC_IP_ADDRESS !== undefined, "Registry URL must be set");
+    assert(process.env.PUBLIC_IP_ADDRESS !== undefined, "Registry URL must be set");
 
     return {
         ServiceId: process.env.SERVICE_ID || generateCustomRandomString(8),
@@ -64,7 +50,7 @@ function getSettings(): Settings {
         MediaServerPort: parseInt(process.env.MEDIA_SERVER_PORT || "1441"),
         MediaEnableTCP: process.env.MEDIA_ENABLE_TCP?.toLowerCase() == "true",
         MediaEnableUDP: process.env.MEDIA_ENABLE_UDP?.toLowerCase() == "true",
-        PublicIPAddress: process.env.MEDIA_PUBLIC_IP_ADDRESS!,
+        PublicIPAddress: process.env.PUBLIC_IP_ADDRESS!,
         SignalServerHost: process.env.SIGNAL_SERVER_HOST || "127.0.0.1",
         SignalServerPort: parseInt(process.env.SIGNAL_SERVER_PORT || "1441"),
         RegistryURL: process.env.REGISTRY_URL,
@@ -185,7 +171,11 @@ class SignalServer {
         this.expressInstance = express();
         this.expressInstance.use(express.json());
         this.httpServer = http.createServer(this.expressInstance);
-        this.wsServer = new socketio.Server(this.httpServer);
+        this.wsServer = new socketio.Server(this.httpServer, {
+            cors: {
+                origin: "*",
+            },
+        });
         this.registryClient = new apollo.ApolloClient({
             uri: this.mediaServer.settings.RegistryURL,
             cache: new apollo.InMemoryCache(),
@@ -263,9 +253,9 @@ class SignalServer {
         };
 
         this.wsServer.on('connection', (socket) => {
-            socket.on('authorize', async (msg) => {
-                JSON.parse(msg);
-            });
+            socket.on('authorize', errorHandler(async ({ token }: { token: string }) => {
+                console.log(await SignatureHelper.verifyJWT(token));
+            }));
 
             socket.on('request_to_join', errorHandler(async (msg: string) => {
             }));
@@ -285,6 +275,10 @@ function main() {
     mediasoup.observer.on("newworker", (worker) => {
       console.log("Starting worker [pid:%d]", worker.pid);
     });
+
+    setInterval(() => {
+        SignatureHelper.cleanUp();
+    }, 60000);
 
     const server = new SignalServer();
 }
