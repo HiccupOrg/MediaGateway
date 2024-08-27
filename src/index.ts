@@ -197,32 +197,35 @@ class SignalServer {
     }
 
     private async registerServiceWorker() {
-        // Fetch public key from registry server
-        const REGISTER_SERVICE = gql`
-            mutation RegisterService($category: String!, $serviceId: String!, $info: ServiceInfoInputType!) {
-                registerService(category: $category, serviceId: $serviceId, serviceInfo: $info) {
-                    publicKey
+        try {
+            // Fetch public key from registry server
+            const REGISTER_SERVICE = gql`
+                mutation RegisterService($category: String!, $serviceId: String!, $info: ServiceInfoInputType!) {
+                    registerService(category: $category, serviceId: $serviceId, serviceInfo: $info) {
+                        publicKey
+                    }
                 }
-            }
-        `;
-        const serviceRegistryQueryResult = await this.registryClient.mutate<RegisterServiceMutation, RegisterServiceMutationVariables>({
-            mutation: REGISTER_SERVICE,
-            variables: {
-                category: "media",
-                serviceId: this.mediaServer.settings.ServiceId,
-                info: {
-                    ip: this.mediaServer.settings.PublicIPAddress,
-                    hostname: this.mediaServer.settings.PublicDomain || this.mediaServer.settings.PublicIPAddress,
-                    port: this.mediaServer.settings.SignalServerPort,
-                    loadFactor: 0.1,
-                    tags: ["china"],
-                }
-            },
-        });
-        this.publicKey = serviceRegistryQueryResult.data?.registerService?.publicKey;
-        assert(this.publicKey);
-        SignatureHelper.publicKey = this.publicKey;
-
+            `;
+            const serviceRegistryQueryResult = await this.registryClient.mutate<RegisterServiceMutation, RegisterServiceMutationVariables>({
+                mutation: REGISTER_SERVICE,
+                variables: {
+                    category: "media",
+                    serviceId: this.mediaServer.settings.ServiceId,
+                    info: {
+                        ip: this.mediaServer.settings.PublicIPAddress,
+                        hostname: this.mediaServer.settings.PublicDomain || this.mediaServer.settings.PublicIPAddress,
+                        port: this.mediaServer.settings.SignalServerPort,
+                        loadFactor: 0.1,
+                        tags: ["china"],
+                    }
+                },
+            });
+            this.publicKey = serviceRegistryQueryResult.data?.registerService?.publicKey;
+            assert(this.publicKey);
+            SignatureHelper.publicKey = this.publicKey;
+        } catch (err) {
+            console.warn(`Failed to register service: ${err}`);
+        }
         return this.registerServiceWorker.bind(this);
     }
 
