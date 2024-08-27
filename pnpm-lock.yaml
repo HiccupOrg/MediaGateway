@@ -18,7 +18,7 @@ importers:
         specifier: ^16.4.5
         version: 16.4.5
       express:
-        specifier: '4'
+        specifier: '>=4.19.2'
         version: 4.19.2
       express-validator:
         specifier: ^7.2.0
