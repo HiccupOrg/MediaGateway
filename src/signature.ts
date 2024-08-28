@@ -1,12 +1,22 @@
 import * as ed25519 from '@noble/ed25519';
 import assert from "node:assert";
+import {Setting} from "./settings.js";
+import {LRUCache} from "lru-cache";
 
 export class SignatureHelper {
     static publicKey: string = "";
-    static nonces: Map<string, Date> = new Map();
+    static nonces: LRUCache<string, any> = new LRUCache({
+        max: 2048,
+        allowStale: false,
+    });
     static timeout: number = 5 * 60 * 1000;
 
-    private static isNonceUsed(nonce: string): boolean {
+    private static isNonceUsed(nonce: string | undefined): boolean {
+        // Allow if nonce doesn't exist
+        if (nonce === undefined) {
+            return false;
+        }
+
         const nonceTime = this.nonces.get(nonce);
         if (nonceTime && !this.isExpired(nonceTime)) {
             return true;
@@ -16,6 +26,9 @@ export class SignatureHelper {
     }
 
     static async verifyJWT(token: string): Promise<Record<any, any> | null> {
+        if (token === undefined || token === null) {
+            return null;
+        }
         try {
             let [_header, _payload, _signature] = token.split('.');
 
@@ -31,7 +44,11 @@ export class SignatureHelper {
             let isValid = await ed25519.verifyAsync(signature, message, this.publicKey);
 
             if (isValid) {
-                return payload;
+                const isServiceIdMatch = payload?.service_id === Setting.ServiceId;
+                const isNonceUsed = this.isNonceUsed(payload?.nonce);
+                if (isServiceIdMatch && isNonceUsed) {
+                    return payload;
+                }
             }
         } catch (_err) {}
 
@@ -70,12 +87,5 @@ export class SignatureHelper {
     private static isExpired(nonceTime: Date): boolean {
         const now = Date.now();
         return (now - nonceTime.getTime()) > this.timeout;
-    }
-
-    static cleanUp() {
-        this.nonces = new Map(
-            Array.from(this.nonces.entries())
-                .filter(([_, nonceTime]) => !this.isExpired(nonceTime))
-        );
     }
 }

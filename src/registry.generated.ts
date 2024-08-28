@@ -85,7 +85,7 @@ export type Mutation = {
   bindAnonymousIdentify: Scalars['Boolean']['output'];
   /** Create Channel */
   createChannel: Channel;
-  /** Create default administration */
+  /** Create default administrator */
   createDefaultAdmin: ClassicUser;
   /** Create PermissionGroup */
   createPermissiongroup: PermissionGroup;
