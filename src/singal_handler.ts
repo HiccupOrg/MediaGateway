@@ -2,7 +2,7 @@ import {DisconnectReason, Namespace, Socket} from "socket.io";
 import {SignatureHelper} from "./signature.js";
 import {LRUCache} from "lru-cache";
 import {EventEmitter} from "node:events";
-import {IceState, WebRtcTransport} from "mediasoup/node/lib/WebRtcTransport.js";
+import {DtlsParameters, IceState, WebRtcTransport} from "mediasoup/node/lib/WebRtcTransport.js";
 import {Producer} from "mediasoup/node/lib/Producer.js";
 import {MediaServer} from "./media_server.js";
 import {MediaKind, RtpParameters} from "mediasoup/node/lib/RtpParameters.js";
@@ -248,10 +248,16 @@ class StateManager {
             state.setTransport(transport);
             socket.emit('connection_info', {
                 id: transport.id,
+                routerRtpCapabilities: mediaServer.codecCompatibility,
                 iceParameters: transport.iceParameters,
                 iceCandidates: transport.iceCandidates,
                 dtlsParameters: transport.dtlsParameters,
             });
+        }));
+
+        socket.on('request_connect', errorHandler(async ({ dtlsParameters }: { dtlsParameters: DtlsParameters }) => {
+            await state.transport?.connect({dtlsParameters});
+            success('request_connect');
         }));
 
         socket.on('place_audio_producer', errorHandler(async (producerInfo: ProducerInfo) => {

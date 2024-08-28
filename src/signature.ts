@@ -46,7 +46,7 @@ export class SignatureHelper {
             if (isValid) {
                 const isServiceIdMatch = payload?.service_id === Setting.ServiceId;
                 const isNonceUsed = this.isNonceUsed(payload?.nonce);
-                if (isServiceIdMatch && isNonceUsed) {
+                if (isServiceIdMatch && !isNonceUsed) {
                     return payload;
                 }
             }
