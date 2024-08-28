@@ -26,39 +26,6 @@ export type AnonymousUser = UserBase & {
   updatedAt: Scalars['DateTime']['output'];
 };
 
-export type Channel = {
-  __typename?: 'Channel';
-  /** configuration of the Channel */
-  configuration: Scalars['JSON']['output'];
-  /** created_at of the Channel */
-  createdAt: Scalars['DateTime']['output'];
-  /** id of the Channel */
-  id?: Maybe<Scalars['Int']['output']>;
-  /** joinable of the Channel */
-  joinable: Scalars['Boolean']['output'];
-  /** name of the Channel */
-  name: Scalars['String']['output'];
-  /** server_id of the Channel */
-  serverId: Scalars['Int']['output'];
-  /** updated_at of the Channel */
-  updatedAt: Scalars['DateTime']['output'];
-};
-
-export type ChannelInput = {
-  /** configuration of the Channel */
-  configuration: Scalars['JSON']['input'];
-  /** created_at of the Channel */
-  createdAt: Scalars['DateTime']['input'];
-  /** joinable of the Channel */
-  joinable: Scalars['Boolean']['input'];
-  /** name of the Channel */
-  name: Scalars['String']['input'];
-  /** server_id of the Channel */
-  serverId: Scalars['Int']['input'];
-  /** updated_at of the Channel */
-  updatedAt: Scalars['DateTime']['input'];
-};
-
 export type ClassicUser = UserBase & {
   __typename?: 'ClassicUser';
   createdAt: Scalars['DateTime']['output'];
@@ -83,18 +50,22 @@ export type Mutation = {
   allocateMediaServer: MediaSignalServerConnectionInfo;
   /** Binding anonymous identify to a classic identify. Auto register public key if anonymous doesn't exist. */
   bindAnonymousIdentify: Scalars['Boolean']['output'];
-  /** Create Channel */
+  /** Create channel */
   createChannel: Channel;
   /** Create default administrator */
   createDefaultAdmin: ClassicUser;
-  /** Create PermissionGroup */
-  createPermissiongroup: PermissionGroup;
+  /** Create permission_group */
+  createPermissionGroup: PermissionGroup;
+  /** Create virtual_server */
+  createVirtualServer: VirtualServer;
   /** Deallocate a media server. Might occur when room is empty for a period. */
   deallocateMediaServer: Scalars['Boolean']['output'];
-  /** Delete Channel. */
-  deleteChannel: Channel;
-  /** Delete PermissionGroup. */
-  deletePermissiongroup: PermissionGroup;
+  /** Delete channel. */
+  deleteChannel: Scalars['Boolean']['output'];
+  /** Delete permission_group. */
+  deletePermissionGroup: Scalars['Boolean']['output'];
+  /** Delete virtual_server. */
+  deleteVirtualServer: Scalars['Boolean']['output'];
   /** Login anonymous user. */
   loginAnonymous: SessionToken;
   /** Login classic user */
@@ -111,10 +82,12 @@ export type Mutation = {
   registerService: ServiceRegistryInfo;
   /** Remove service */
   removeService: Scalars['Boolean']['output'];
-  /** Update Channel. Create if not exist. */
+  /** Update channel. Create if not exist. */
   updateChannel: Channel;
-  /** Update PermissionGroup. Create if not exist. */
-  updatePermissiongroup: PermissionGroup;
+  /** Update permission_group. Create if not exist. */
+  updatePermissionGroup: PermissionGroup;
+  /** Update virtual_server. Create if not exist. */
+  updateVirtualServer: VirtualServer;
 };
 
 
@@ -132,7 +105,7 @@ export type MutationBindAnonymousIdentifyArgs = {
 
 
 export type MutationCreateChannelArgs = {
-  data: ChannelInput;
+  data: ChannelPartialOptionalInput;
 };
 
 
@@ -142,8 +115,13 @@ export type MutationCreateDefaultAdminArgs = {
 };
 
 
-export type MutationCreatePermissiongroupArgs = {
-  data: PermissionGroupInput;
+export type MutationCreatePermissionGroupArgs = {
+  data: PermissionGroupPartialOptionalInput;
+};
+
+
+export type MutationCreateVirtualServerArgs = {
+  data: VirtualServerPartialOptionalInput;
 };
 
 
@@ -157,7 +135,12 @@ export type MutationDeleteChannelArgs = {
 };
 
 
-export type MutationDeletePermissiongroupArgs = {
+export type MutationDeletePermissionGroupArgs = {
+  itemId: Scalars['Int']['input'];
+};
+
+
+export type MutationDeleteVirtualServerArgs = {
   itemId: Scalars['Int']['input'];
 };
 
@@ -212,31 +195,20 @@ export type MutationRemoveServiceArgs = {
 
 
 export type MutationUpdateChannelArgs = {
-  data: ChannelInput;
+  data: ChannelOptionalInput;
   itemId: Scalars['Int']['input'];
 };
 
 
-export type MutationUpdatePermissiongroupArgs = {
-  data: PermissionGroupInput;
+export type MutationUpdatePermissionGroupArgs = {
+  data: PermissionGroupOptionalInput;
   itemId: Scalars['Int']['input'];
 };
 
-export type PermissionGroup = {
-  __typename?: 'PermissionGroup';
-  /** id of the PermissionGroup */
-  id?: Maybe<Scalars['Int']['output']>;
-  /** name of the PermissionGroup */
-  name: Scalars['String']['output'];
-  /** permissions of the PermissionGroup */
-  permissions: Array<Scalars['String']['output']>;
-};
 
-export type PermissionGroupInput = {
-  /** name of the PermissionGroup */
-  name: Scalars['String']['input'];
-  /** permissions of the PermissionGroup */
-  permissions: Array<Scalars['String']['input']>;
+export type MutationUpdateVirtualServerArgs = {
+  data: VirtualServerOptionalInput;
+  itemId: Scalars['Int']['input'];
 };
 
 export type Query = {
@@ -245,6 +217,12 @@ export type Query = {
   decryptNumber: Scalars['Int']['output'];
   /** Encrypt a number */
   encryptNumber: Scalars['String']['output'];
+  /** Retrieve paged channel instances. */
+  retrieveChannel: Array<Channel>;
+  /** Retrieve paged permission_group instances. */
+  retrievePermissionGroup: Array<PermissionGroup>;
+  /** Retrieve paged virtual_server instances. */
+  retrieveVirtualServer: Array<VirtualServer>;
   /** Get self info */
   selfInfo: ClassicUserAnonymousUser;
   /** Get server time */
@@ -265,6 +243,24 @@ export type QueryDecryptNumberArgs = {
 
 export type QueryEncryptNumberArgs = {
   number: Scalars['Int']['input'];
+};
+
+
+export type QueryRetrieveChannelArgs = {
+  page?: Scalars['Int']['input'];
+  pageSize?: Scalars['Int']['input'];
+};
+
+
+export type QueryRetrievePermissionGroupArgs = {
+  page?: Scalars['Int']['input'];
+  pageSize?: Scalars['Int']['input'];
+};
+
+
+export type QueryRetrieveVirtualServerArgs = {
+  page?: Scalars['Int']['input'];
+  pageSize?: Scalars['Int']['input'];
 };
 
 
@@ -312,6 +308,98 @@ export enum UserType {
   Anonymous = 'ANONYMOUS',
   Classic = 'CLASSIC'
 }
+
+export type Channel = {
+  __typename?: 'channel';
+  /** configuration of the channel */
+  configuration: Scalars['JSON']['output'];
+  /** created_at of the channel */
+  createdAt: Scalars['DateTime']['output'];
+  /** id of the channel */
+  id?: Maybe<Scalars['Int']['output']>;
+  /** joinable of the channel */
+  joinable: Scalars['Boolean']['output'];
+  /** name of the channel */
+  name: Scalars['String']['output'];
+  /** server_id of the channel */
+  serverId: Scalars['Int']['output'];
+  /** updated_at of the channel */
+  updatedAt: Scalars['DateTime']['output'];
+};
+
+export type ChannelOptionalInput = {
+  /** configuration of the channel */
+  configuration?: InputMaybe<Scalars['JSON']['input']>;
+  /** joinable of the channel */
+  joinable?: InputMaybe<Scalars['Boolean']['input']>;
+  /** name of the channel */
+  name?: InputMaybe<Scalars['String']['input']>;
+  /** server_id of the channel */
+  serverId?: InputMaybe<Scalars['Int']['input']>;
+};
+
+export type ChannelPartialOptionalInput = {
+  /** configuration of the channel */
+  configuration?: InputMaybe<Scalars['JSON']['input']>;
+  /** joinable of the channel */
+  joinable: Scalars['Boolean']['input'];
+  /** name of the channel */
+  name: Scalars['String']['input'];
+  /** server_id of the channel */
+  serverId: Scalars['Int']['input'];
+};
+
+export type PermissionGroup = {
+  __typename?: 'permissionGroup';
+  /** id of the permission_group */
+  id?: Maybe<Scalars['Int']['output']>;
+  /** name of the permission_group */
+  name: Scalars['String']['output'];
+  /** permissions of the permission_group */
+  permissions: Array<Scalars['String']['output']>;
+};
+
+export type PermissionGroupOptionalInput = {
+  /** name of the permission_group */
+  name?: InputMaybe<Scalars['String']['input']>;
+  /** permissions of the permission_group */
+  permissions?: InputMaybe<Array<Scalars['String']['input']>>;
+};
+
+export type PermissionGroupPartialOptionalInput = {
+  /** name of the permission_group */
+  name: Scalars['String']['input'];
+  /** permissions of the permission_group */
+  permissions: Array<Scalars['String']['input']>;
+};
+
+export type VirtualServer = {
+  __typename?: 'virtualServer';
+  /** configuration of the virtual_server */
+  configuration: Scalars['JSON']['output'];
+  /** created_at of the virtual_server */
+  createdAt: Scalars['DateTime']['output'];
+  /** id of the virtual_server */
+  id?: Maybe<Scalars['Int']['output']>;
+  /** name of the virtual_server */
+  name: Scalars['String']['output'];
+  /** updated_at of the virtual_server */
+  updatedAt: Scalars['DateTime']['output'];
+};
+
+export type VirtualServerOptionalInput = {
+  /** configuration of the virtual_server */
+  configuration?: InputMaybe<Scalars['JSON']['input']>;
+  /** name of the virtual_server */
+  name?: InputMaybe<Scalars['String']['input']>;
+};
+
+export type VirtualServerPartialOptionalInput = {
+  /** configuration of the virtual_server */
+  configuration?: InputMaybe<Scalars['JSON']['input']>;
+  /** name of the virtual_server */
+  name: Scalars['String']['input'];
+};
 
 export type RegisterServiceMutationVariables = Exact<{
   category: Scalars['String']['input'];
