@@ -1,11 +1,12 @@
-import {DisconnectReason, Socket} from "socket.io";
+import {DisconnectReason, Namespace, Socket} from "socket.io";
 import {SignatureHelper} from "./signature.js";
 import {LRUCache} from "lru-cache";
 import {EventEmitter} from "node:events";
-import {WebRtcTransport} from "mediasoup/node/lib/WebRtcTransport.js";
+import {IceState, WebRtcTransport} from "mediasoup/node/lib/WebRtcTransport.js";
 import {Producer} from "mediasoup/node/lib/Producer.js";
 import {MediaServer} from "./media_server.js";
 import {MediaKind, RtpParameters} from "mediasoup/node/lib/RtpParameters.js";
+import {UUID} from "node:crypto";
 
 
 export const errorHandler = (handler: Function) => {
@@ -31,6 +32,7 @@ export const errorHandler = (handler: Function) => {
 interface MediaTokenPayload {
     service_id: string;
     room_id: string;
+    server_id: string;
     display_name: string;
     max_incoming_bitrate: number;
 }
@@ -42,6 +44,12 @@ interface ProducerInfo {
 }
 
 
+interface ProducerUpdateEvent {
+    newProducer: Producer;
+    oldProducer: Producer;
+}
+
+
 class MediaSessionState {
     readonly sessionId: string;
     isAuthenticated: boolean;
@@ -50,15 +58,23 @@ class MediaSessionState {
     audioProducer: Producer | undefined;
     videoProducer: Producer | undefined;
     observer: EventEmitter;
+    displayName: string;
+    readonly userId: UUID;
+    readonly server: Namespace;
 
-    constructor(sid: string) {
+    constructor(sid: string, server: Namespace) {
         this.sessionId = sid;
         this.isAuthenticated = false;
         this.observer = new EventEmitter();
+        this.displayName = "AnonymousUser";
+        this.userId = crypto.randomUUID();
+        this.server = server;
+        this.initializeObserver();
     }
 
     setAuthenticated(payload: MediaTokenPayload): void {
         this.businessPayload = payload;
+        this.displayName = this.businessPayload.display_name;
         this.isAuthenticated = true;
         this.observer.emit('authenticated', payload);
     }
@@ -66,6 +82,7 @@ class MediaSessionState {
     setTransport(transport: WebRtcTransport): void {
         this.transport = transport;
         this.transport.on('@close', () => this.onCurrentTransportClosed());
+        this.transport.on('icestatechange', (state) => this.onCurrentTransportIceStateChanged(state));
         this.observer.emit('transportOpened', transport);
     }
 
@@ -73,33 +90,48 @@ class MediaSessionState {
         return this.transport instanceof WebRtcTransport && !this.transport.closed;
     }
 
-    updateAudioProducer(producer: Producer): void {
+    updateAudioProducer(producer: Producer | undefined): Producer | undefined {
         if (this.audioProducer) {
             if (!this.audioProducer.closed) {
                 this.audioProducer.close();
             }
         }
 
+        const oldProducer = this.audioProducer;
         this.audioProducer = producer;
-        this.observer.emit('audioProducerUpdated', producer);
+        this.observer.emit('audioProducerUpdated', {
+            newProducer: producer,
+            oldProducer,
+        });
+        return oldProducer;
     }
 
-    updateVideoProducer(producer: Producer): void {
+    updateVideoProducer(producer: Producer): Producer | undefined {
         if (this.videoProducer) {
             if (!this.videoProducer.closed) {
                 this.videoProducer.close();
             }
         }
 
+        const oldProducer = this.videoProducer;
         this.videoProducer = producer;
-        this.observer.emit('videoProducerUpdated', producer);
+        this.observer.emit('videoProducerUpdated', {
+            newProducer: producer,
+            oldProducer,
+        });
+        return oldProducer;
+    }
+
+    updateDisplayName(name: string): void {
+        this.displayName = name;
+        this.observer.emit('displayNameChanged', name);
     }
 
     destroy() {
         this.observer.emit('beforeDestroy');
-        this.audioProducer?.close();
+        // this.audioProducer?.close();
         this.audioProducer = undefined;
-        this.videoProducer?.close();
+        // this.videoProducer?.close();
         this.videoProducer = undefined;
         this.transport?.close();
         this.observer.emit('destroy');
@@ -108,6 +140,43 @@ class MediaSessionState {
 
     private onCurrentTransportClosed() {
         this.observer.emit('transportClosed');
+    }
+
+    private onCurrentTransportIceStateChanged(state: IceState) {
+        if (state === 'completed') {
+            this.observer.emit('transportUserCompleted');
+        } else if (state === 'disconnected') {
+            this.observer.emit('transportUserDisconnected');
+        } else if (state === 'closed') {
+            this.observer.emit('transportUserClosed');
+        }
+    }
+
+    private initializeObserver(): void {
+        const userJoinTransportHandler = () => {
+            this.server.to(this.businessPayload!.server_id).emit('userJoin', {
+                userId: this.userId,
+                channel: this.businessPayload!.room_id,
+                displayName: this.displayName,
+            });
+        };
+        this.observer.on('transportUserCompleted', userJoinTransportHandler);
+
+        const userLeaveTransportHandler = () => {
+            this.server.to(this.businessPayload!.server_id).emit('userLeave', {
+                userId: this.userId,
+                channel: this.businessPayload!.room_id,
+            });
+        };
+        this.observer.on('transportUserClosed', userLeaveTransportHandler);
+
+        const userNameChangedHandler = () => {
+            this.server.to(this.businessPayload!.server_id).emit('userNameChanged', {
+                userId: this.userId,
+                displayName: this.displayName,
+            });
+        };
+        this.observer.on('displayNameChanged', userNameChangedHandler);
     }
 }
 
@@ -126,19 +195,19 @@ class StateManager {
         });
     }
 
-    private getState(socket: Socket) {
+    private getState(socket: Socket, server: Namespace) {
         let state: MediaSessionState | undefined = undefined;
         if (socket.recovered) {
             state = this.disconnectStates.get(socket.id);
         }
         if (!state) {
-            state = new MediaSessionState(socket.id);
+            state = new MediaSessionState(socket.id, server);
         }
         return state;
     }
 
-    useSignalHandler(socket: Socket, mediaServer: MediaServer) {
-        const state = this.getState(socket);
+    useSignalHandler(socket: Socket, mediaServer: MediaServer, socketServer: Namespace) {
+        const state = this.getState(socket, socketServer);
 
         const critical_failure = (reason: string) => {
             socket.emit('critical_failure', { reason });
@@ -159,12 +228,14 @@ class StateManager {
         }
 
         socket.on('authorize', errorHandler(async ({ token }: { token: string }) => {
-            const tokenPayload = await SignatureHelper.verifyJWT(token);
+            const tokenPayload: MediaTokenPayload = await SignatureHelper.verifyJWT(token) as MediaTokenPayload;
             if (!tokenPayload) {
                 critical_failure('authorize_failed');
                 return;
             }
-            state.setAuthenticated(tokenPayload as MediaTokenPayload);
+            state.setAuthenticated(tokenPayload);
+            socket.join(tokenPayload.server_id);
+            socket.join(tokenPayload.room_id);
             success('authorize');
         }));
 
@@ -204,13 +275,31 @@ class StateManager {
                 rtpParameters: producerInfo.rtpParameters,
             });
 
-            state.updateAudioProducer(newProducer);
+            const oldProducerId = state.updateAudioProducer(newProducer)?.id;
+            const newProducerId = newProducer.id;
+            socket.to(state.businessPayload!.room_id).emit('audio_producer_updated', {
+                userId: state.userId,
+                oldProducerId,
+                newProducerId,
+            });
 
             success('place_audio_producer');
         }));
 
         socket.on('place_video_producer', errorHandler(async (producerInfo: ProducerInfo) => {
-            socket.emit('feature_not_implemented');
+            if (!state.isAuthenticated) {
+                critical_failure('unauthorized');
+                return;
+            }
+            error('place_video_producer', 'Feature not implemented');
+        }));
+
+        socket.on('request_change_name', errorHandler(async (newName: string) => {
+            if (!state.isAuthenticated) {
+                critical_failure('unauthorized');
+                return;
+            }
+            state.updateDisplayName(newName);
         }));
 
         socket.on('disconnecting', errorHandler((reason: DisconnectReason) => {

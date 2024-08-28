@@ -86,7 +86,7 @@ class SignalServer {
         });
 
         this.wsServer.of('/media').on('connection', (socket) => {
-            StateManagerInstance.useSignalHandler(socket, this.mediaServer);
+            StateManagerInstance.useSignalHandler(socket, this.mediaServer, this.wsServer.of('/media'));
         });
 
         // Waiting for register service success
