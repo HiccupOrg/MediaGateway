@@ -190,8 +190,8 @@ class SignalServer {
         try {
             // Fetch public key from registry server
             const REGISTER_SERVICE = gql`
-                mutation RegisterService($category: String!, $serviceId: String!, $info: ServiceInfoInputType!) {
-                    registerService(category: $category, serviceId: $serviceId, serviceInfo: $info) {
+                mutation RegisterService($category: String!, $info: ServiceInfoInputType!) {
+                    registerService(category: $category, serviceInfo: $info) {
                         publicKey
                     }
                 }
@@ -200,8 +200,8 @@ class SignalServer {
                 mutation: REGISTER_SERVICE,
                 variables: {
                     category: "media",
-                    serviceId: this.mediaServer.settings.ServiceId,
                     info: {
+                        id: this.mediaServer.settings.ServiceId,
                         ip: this.mediaServer.settings.PublicIPAddress,
                         hostname: this.mediaServer.settings.PublicDomain || this.mediaServer.settings.PublicIPAddress,
                         port: this.mediaServer.settings.SignalServerPort,

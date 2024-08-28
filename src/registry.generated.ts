@@ -201,7 +201,6 @@ export type MutationRegisterClassicArgs = {
 
 export type MutationRegisterServiceArgs = {
   category: Scalars['String']['input'];
-  serviceId: Scalars['String']['input'];
   serviceInfo: ServiceInfoInputType;
 };
 
@@ -275,6 +274,7 @@ export type QueryUserInfoArgs = {
 
 export type ServiceInfoInputType = {
   hostname?: InputMaybe<Scalars['String']['input']>;
+  id: Scalars['String']['input'];
   ip: Scalars['String']['input'];
   loadFactor: Scalars['Float']['input'];
   port: Scalars['Int']['input'];
@@ -284,6 +284,7 @@ export type ServiceInfoInputType = {
 export type ServiceInfoType = {
   __typename?: 'ServiceInfoType';
   hostname?: Maybe<Scalars['String']['output']>;
+  id: Scalars['String']['output'];
   ip: Scalars['String']['output'];
   loadFactor: Scalars['Float']['output'];
   port: Scalars['Int']['output'];
@@ -314,7 +315,6 @@ export enum UserType {
 
 export type RegisterServiceMutationVariables = Exact<{
   category: Scalars['String']['input'];
-  serviceId: Scalars['String']['input'];
   info: ServiceInfoInputType;
 }>;
 

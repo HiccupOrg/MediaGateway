@@ -15,13 +15,13 @@ export class SignatureHelper {
         return false;
     }
 
-    static async verifyJWT(token: string): Promise<[boolean, Record<any, any>?]> {
+    static async verifyJWT(token: string): Promise<Record<any, any> | null> {
         try {
             let [_header, _payload, _signature] = token.split('.');
 
             let header = JSON.parse(Buffer.from(_header, "base64url").toString('ascii'));
             if (header?.alg !== 'EdDSA') {
-                return [false, undefined];
+                return null;
             }
 
             let payload = JSON.parse(Buffer.from(_payload, "base64url").toString('ascii'));
@@ -31,11 +31,11 @@ export class SignatureHelper {
             let isValid = await ed25519.verifyAsync(signature, message, this.publicKey);
 
             if (isValid) {
-                return [true, payload];
+                return payload;
             }
         } catch (_err) {}
 
-        return [false, undefined];
+        return null;
     }
 
     static async verifyMessage(messageBody: Map<string, any>, signature: string): Promise<[boolean, string?]> {
