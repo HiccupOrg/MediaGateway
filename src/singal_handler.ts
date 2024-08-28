@@ -289,7 +289,7 @@ class StateManager {
                 newProducerId,
             });
 
-            success('place_audio_producer');
+            socket.emit('set_audio_producer_id', newProducerId);
         }));
 
         socket.on('place_video_producer', errorHandler(async (producerInfo: ProducerInfo) => {
