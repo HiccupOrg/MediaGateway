@@ -109,6 +109,8 @@ function main() {
       console.log("Starting worker [pid:%d]", worker.pid);
     });
 
+    require("events").captureRejections = true;
+
     const server = new SignalServer();
 }
 

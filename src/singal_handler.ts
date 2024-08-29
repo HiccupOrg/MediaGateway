@@ -2,10 +2,16 @@ import {DisconnectReason, Namespace, Socket} from "socket.io";
 import {SignatureHelper} from "./signature.js";
 import {LRUCache} from "lru-cache";
 import {EventEmitter} from "node:events";
-import {DtlsParameters, IceState, WebRtcTransport} from "mediasoup/node/lib/WebRtcTransport.js";
+import {
+    DtlsParameters,
+    IceCandidate,
+    IceParameters,
+    IceState,
+    WebRtcTransport
+} from "mediasoup/node/lib/WebRtcTransport.js";
 import {Producer} from "mediasoup/node/lib/Producer.js";
 import {MediaServer} from "./media_server.js";
-import {MediaKind, RtpParameters} from "mediasoup/node/lib/RtpParameters.js";
+import {MediaKind, RtpCapabilities, RtpParameters} from "mediasoup/node/lib/RtpParameters.js";
 import {UUID} from "node:crypto";
 
 
@@ -180,6 +186,49 @@ class MediaSessionState {
     }
 }
 
+interface MediaServerToClientEvents {
+    required_authorize: () => void;
+    critical_failure: (reason: { reason: string; }) => void;
+    operation_error: (reason: { reason: string; operation: string; }) => void;
+    user_audio_producer_updated: (data: {
+        userId: string;
+        oldProducerId?: string;
+        newProducerId: string;
+    }) => void;
+}
+
+interface MediaClientToServerEvents {
+    authorize: (token: { token: string }, callback: () => void) => void;
+    request_connection_info: (callback: (
+        data: {
+            id: string;
+            routerRtpCapabilities: RtpCapabilities,
+            iceParameters: IceParameters,
+            iceCandidates: IceCandidate[],
+            dtlsParameters: DtlsParameters,
+        }
+    ) => void) => void;
+    request_connect: (data: {
+        dtlsParameters: DtlsParameters,
+    }, callback: (ok: boolean) => void) => void;
+    place_audio_producer: (producerInfo: ProducerInfo, callback: (
+        data?: {
+            producerId: string;
+        },
+        error?: {
+            requireRenewTransport?: boolean;
+        },
+    ) => void) => void;
+    place_video_producer: (producerInfo: ProducerInfo, callback: (
+        data?: {
+            producerId: string;
+        },
+        error?: {
+            requireRenewTransport?: boolean;
+        },
+    ) => void) => void;
+    request_change_name: (newName: string) => void;
+}
 
 class StateManager {
     disconnectStates: LRUCache<string, MediaSessionState>;
@@ -206,12 +255,17 @@ class StateManager {
         return state;
     }
 
-    useSignalHandler(socket: Socket, mediaServer: MediaServer, socketServer: Namespace) {
+    useSignalHandler(socket: Socket<MediaClientToServerEvents, MediaServerToClientEvents>, mediaServer: MediaServer, socketServer: Namespace<MediaClientToServerEvents, MediaServerToClientEvents>) {
         const state = this.getState(socket, socketServer);
 
         const critical_failure = (reason: string) => {
             socket.emit('critical_failure', { reason });
             socket.disconnect();
+        };
+
+        (socket as any)[Symbol.for('nodejs.rejection')] = (err: any) => {
+            console.error(err);
+            critical_failure("Uncaught exception");
         };
 
         const error = (operation: string, reason: string) => {
@@ -221,13 +275,7 @@ class StateManager {
             });
         };
 
-        const success = (operation: string) => {
-            socket.emit('operation_success', {
-                operation,
-            });
-        }
-
-        socket.on('authorize', errorHandler(async ({ token }: { token: string }) => {
+        socket.on('authorize', async ({ token }: { token: string }, callback) => {
             const tokenPayload: MediaTokenPayload = await SignatureHelper.verifyJWT(token) as MediaTokenPayload;
             if (!tokenPayload) {
                 critical_failure('authorize_failed');
@@ -236,38 +284,39 @@ class StateManager {
             state.setAuthenticated(tokenPayload);
             socket.join(tokenPayload.server_id);
             socket.join(tokenPayload.room_id);
-            success('authorize');
-        }));
+            callback();
+        });
 
-        socket.on('request_connection_info', errorHandler(async () => {
+        socket.on('request_connection_info', async (callback) => {
             if (!state.isAuthenticated) {
                 critical_failure('unauthorized');
                 return;
             }
             const transport = await mediaServer.createTransport(state.businessPayload!.room_id);
             state.setTransport(transport);
-            socket.emit('connection_info', {
+            callback({
                 id: transport.id,
                 routerRtpCapabilities: mediaServer.codecCompatibility,
                 iceParameters: transport.iceParameters,
                 iceCandidates: transport.iceCandidates,
                 dtlsParameters: transport.dtlsParameters,
             });
-        }));
+        });
 
-        socket.on('request_connect', errorHandler(async ({ dtlsParameters }: { dtlsParameters: DtlsParameters }) => {
-            await state.transport?.connect({dtlsParameters});
-            success('request_connect');
-        }));
+        socket.on('request_connect', async ({ dtlsParameters }, callback) => {
+            callback(await state.transport?.connect({dtlsParameters}) !== undefined);
+        });
 
-        socket.on('place_audio_producer', errorHandler(async (producerInfo: ProducerInfo) => {
+        socket.on('place_audio_producer', async (producerInfo, callback) => {
             if (!state.isAuthenticated) {
                 critical_failure('unauthorized');
                 return;
             }
 
             if (!state.isTransportValid) {
-                socket.emit('require_renew_transport');
+                callback(undefined, {
+                    requireRenewTransport: true,
+                });
                 return;
             }
 
@@ -283,39 +332,41 @@ class StateManager {
 
             const oldProducerId = state.updateAudioProducer(newProducer)?.id;
             const newProducerId = newProducer.id;
-            socket.to(state.businessPayload!.room_id).emit('audio_producer_updated', {
+            socket.to(state.businessPayload!.room_id).emit('user_audio_producer_updated', {
                 userId: state.userId,
                 oldProducerId,
                 newProducerId,
             });
 
-            socket.emit('set_audio_producer_id', newProducerId);
-        }));
+            callback({
+                producerId: newProducerId,
+            }, undefined);
+        });
 
-        socket.on('place_video_producer', errorHandler(async (producerInfo: ProducerInfo) => {
+        socket.on('place_video_producer', async (producerInfo: ProducerInfo) => {
             if (!state.isAuthenticated) {
                 critical_failure('unauthorized');
                 return;
             }
-            error('place_video_producer', 'Feature not implemented');
-        }));
+            critical_failure('Feature not implemented');
+        });
 
-        socket.on('request_change_name', errorHandler(async (newName: string) => {
+        socket.on('request_change_name', async (newName) => {
             if (!state.isAuthenticated) {
                 critical_failure('unauthorized');
                 return;
             }
             state.updateDisplayName(newName);
-        }));
+        });
 
-        socket.on('disconnecting', errorHandler((reason: DisconnectReason) => {
+        socket.on('disconnecting', (reason: DisconnectReason) => {
             if (reason != "server namespace disconnect" && reason != "client namespace disconnect" && reason != 'server shutting down') {
                 // Save only authenticated session
                 if (state.isAuthenticated) {
                     this.disconnectStates.set(socket.id, state);
                 }
             }
-        }));
+        });
 
         socket.emit('required_authorize');
     }
