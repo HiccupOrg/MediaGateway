@@ -211,21 +211,30 @@ interface MediaClientToServerEvents {
     request_connect: (data: {
         dtlsParameters: DtlsParameters,
     }, callback: (ok: boolean) => void) => void;
-    place_audio_producer: (producerInfo: ProducerInfo, callback: (
-        data?: {
-            producerId: string;
-        },
-        error?: {
-            requireRenewTransport?: boolean;
-        },
+    place_audio_producer: (
+        producerInfo: {
+            kind: MediaKind;
+            rtpParameters: RtpParameters;
+        }, callback: (
+            data?: {
+                producerId: string;
+            },
+            error?: {
+                requireRenewTransport?: boolean;
+            },
     ) => void) => void;
-    place_video_producer: (producerInfo: ProducerInfo, callback: (
-        data?: {
-            producerId: string;
+    place_video_producer: (
+        producerInfo: {
+            kind: MediaKind;
+            rtpParameters: RtpParameters;
         },
-        error?: {
-            requireRenewTransport?: boolean;
-        },
+        callback: (
+            data?: {
+                producerId: string;
+            },
+            error?: {
+                requireRenewTransport?: boolean;
+            },
     ) => void) => void;
     request_change_name: (newName: string) => void;
 }
