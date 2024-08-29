@@ -9,6 +9,7 @@ import {RegisterServiceMutation, RegisterServiceMutationVariables} from "./regis
 import {Setting} from "./settings.js";
 import {StateManagerInstance} from "./singal_handler.js";
 import {MediaServer} from "./media_server.js";
+import {EventEmitter} from "node:events";
 
 const gql = apollo.gql;
 
@@ -109,7 +110,8 @@ function main() {
       console.log("Starting worker [pid:%d]", worker.pid);
     });
 
-    require("events").captureRejections = true;
+    // Enable promise rejection capture
+    EventEmitter.captureRejections = true;
 
     const server = new SignalServer();
 }
